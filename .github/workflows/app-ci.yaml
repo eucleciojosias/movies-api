@@ -74,3 +74,60 @@ jobs:
           remote="${REGISTRY}/${ECR_REPOSITORY}"
           docker tag "${ECR_REPOSITORY}:${IMAGE_TAG}" "${remote}:${IMAGE_TAG}"
           docker push "${remote}:${IMAGE_TAG}"
+
+  deploy:
+    name: Deploy to staging
+    needs: build
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: k8s-deploy-staging
+      cancel-in-progress: false
+    env:
+      AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_APP_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Check the staging cluster exists
+        id: cluster
+        run: |
+          if out=$(aws eks describe-cluster --name "$EKS_CLUSTER_NAME" \
+                     --query 'cluster.status' --output text 2>&1); then
+            echo "Cluster status: $out"
+            [ "$out" = "ACTIVE" ] && echo "deploy=true" >>"$GITHUB_OUTPUT" \
+              || echo "::notice::skipping deploy — cluster is $out, not ACTIVE"
+          else
+            echo "::notice::skipping deploy — $out"
+          fi
+
+      - uses: azure/setup-kubectl@v4
+        if: steps.cluster.outputs.deploy == 'true'
+        with:
+          version: v1.33.0
+
+      - name: Update kubeconfig
+        if: steps.cluster.outputs.deploy == 'true'
+        run: aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME"
+
+      - name: Render manifests
+        if: steps.cluster.outputs.deploy == 'true'
+        run: |
+          export IMAGE="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${GITHUB_SHA::7}"
+          yq -i '(.. | select(. == "<IMAGE>")) = strenv(IMAGE)' k8s-manifests/movies-api.yaml
+
+      - name: Deploy movies-api
+        if: steps.cluster.outputs.deploy == 'true'
+        run: |
+            kubectl apply -f k8s-manifests/movies-api.yaml
+            kubectl rollout status deployment/movies-api --timeout=5m
