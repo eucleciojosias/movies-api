@@ -5,10 +5,6 @@ on:
   push:
     branches:
       - main
-    paths:
-      - 'api/**'
-      - 'k8s-manifests/**'
-      - '.github/workflows/app-ci.yml'
 
 permissions:
   contents: read
@@ -32,11 +28,9 @@ jobs:
           enable-cache: true
 
       - name: ruff format --check
-        working-directory: api
         run: uv run ruff format --check app
 
       - name: ruff check
-        working-directory: api
         run: uv run ruff check app
 
       - name: Derive the image tag from the commit
@@ -49,7 +43,6 @@ jobs:
       - name: Build image
         uses: docker/build-push-action@v6
         with:
-          context: api
           load: true
           tags: ${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
           cache-from: type=gha
