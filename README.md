@@ -11,6 +11,9 @@ make up          # docker compose up --build: api on :8000, postgres on :5432
 
 Optional data seeding: replay `seed-movies.http` from OMDb.
 
+```sh
+npx httpyac send seed-movies.http --all
+```
 
 ## Endpoints
 

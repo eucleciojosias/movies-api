@@ -1,7 +1,8 @@
-.PHONY: help up down logs build lint fmt psql seed
+.PHONY: help init up down logs build lint fmt psql seed
 
 help:
 	@echo "Targets:"
+	@echo "  init    first-time setup: generate uv.lock and create the local .venv"
 	@echo "  up      docker compose up --build (foreground)"
 	@echo "  down    stop and remove containers"
 	@echo "  logs    tail api logs"
@@ -10,7 +11,14 @@ help:
 	@echo "  fmt     ruff format"
 	@echo "  psql    open a psql shell against the running postgres service"
 
-up:
+
+uv.lock: pyproject.toml
+	uv lock
+
+init: uv.lock
+	uv sync
+
+up: uv.lock
 	docker compose up --build
 
 down:
@@ -19,7 +27,7 @@ down:
 logs:
 	docker compose logs -f api
 
-build:
+build: uv.lock
 	docker build -t movies-api .
 
 lint:
