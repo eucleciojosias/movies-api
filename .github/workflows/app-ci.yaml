@@ -1,0 +1,83 @@
+name: App CI/CD
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'api/**'
+      - 'k8s-manifests/**'
+      - '.github/workflows/app-ci.yml'
+
+permissions:
+  contents: read
+
+env:
+  ECR_REPOSITORY: movies-py-api
+
+jobs:
+  build:
+    name: Lint, build, scan, push
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: ruff format --check
+        working-directory: api
+        run: uv run ruff format --check app
+
+      - name: ruff check
+        working-directory: api
+        run: uv run ruff check app
+
+      - name: Derive the image tag from the commit
+        run: |
+          echo "IMAGE_TAG=${GITHUB_SHA::7}" >>"$GITHUB_ENV"
+          echo "Image tag: ${GITHUB_SHA::7}"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: api
+          load: true
+          tags: ${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy image scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: image
+          image-ref: ${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_APP_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Log in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Push to ECR
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          remote="${REGISTRY}/${ECR_REPOSITORY}"
+          docker tag "${ECR_REPOSITORY}:${IMAGE_TAG}" "${remote}:${IMAGE_TAG}"
+          docker push "${remote}:${IMAGE_TAG}"
