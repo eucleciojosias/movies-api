@@ -124,7 +124,7 @@ jobs:
         if: steps.cluster.outputs.deploy == 'true'
         run: |
           helm upgrade --install movies-api ./chart \
-            --namespace default \
+            --namespace "${{ github.event.repository.name }}" \
             --set image.repository="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}" \
             --set image.tag="${GITHUB_SHA::7}" \
             --rollback-on-failure \
