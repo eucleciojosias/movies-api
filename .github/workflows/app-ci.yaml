@@ -111,23 +111,21 @@ jobs:
             echo "::notice::skipping deploy: $out"
           fi
 
-      - uses: azure/setup-kubectl@v4
+      - uses: azure/setup-helm@v4
         if: steps.cluster.outputs.deploy == 'true'
         with:
-          version: v1.33.0
+          version: v4.2.0
 
       - name: Update kubeconfig
         if: steps.cluster.outputs.deploy == 'true'
         run: aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME"
 
-      - name: Render manifests
-        if: steps.cluster.outputs.deploy == 'true'
-        run: |
-          export IMAGE="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${GITHUB_SHA::7}"
-          yq -i '(.. | select(. == "<IMAGE>")) = strenv(IMAGE)' k8s-manifests/movies-api.yaml
-
       - name: Deploy movies-api
         if: steps.cluster.outputs.deploy == 'true'
         run: |
-            kubectl apply -f k8s-manifests/movies-api.yaml
-            kubectl rollout status deployment/movies-api --timeout=5m
+          helm upgrade --install movies-api ./chart \
+            --namespace default \
+            --set image.repository="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}" \
+            --set image.tag="${GITHUB_SHA::7}" \
+            --rollback-on-failure \
+            --timeout 2m
