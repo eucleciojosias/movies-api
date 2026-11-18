@@ -1,0 +1,6 @@
+apiVersion: v2
+name: movies-api
+description: FastAPI movies API with an in-cluster PostgreSQL
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

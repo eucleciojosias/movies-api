@@ -1,0 +1,23 @@
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 256Mi
+
+autoscaling:
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+ingress:
+  className: nginx
+  host: movies.staging.euclecio.site
+
+postgres:
+  image: postgres:17-alpine
+  user: movies
+  database: movies
+  password: pg1234 # override with --set postgres.password=... outside a POC
+  storageClass: gp2
+  storageSize: 1Gi
